@@ -1,43 +1,56 @@
 const express = require('express');
 const multer = require('multer');
 const upload = multer({ dest: 'uploads/',});
-const bodyParser = require('body-parser');
 const fs = require("fs");
-//const cors = require("cors")
+const readline = require("readline");
 
 const app = express();
-//app.use(cors);
 app.use(express.json());
 
-app.post('/sort', upload.single('inputFile'), (req, res) => {
-    const inputFile = req.file;
-    //const contents = [];
+const processingData = [];
+let sortingRequests = 0;
 
-    fs.readFile(inputFile.path, 'utf8', (err, fileContents) => {
-        if (err) {
-            return res.status(500).json({error: 'Error reading file'});
+app.post('/sort', upload.single('inputFile'), (req, res) => {
+    const inputFile = req.file; //Get input file
+    const startTime = performance.now();
+    let requestsCounter = 0;
+
+    const readStream = fs.createReadStream(inputFile.path, 'utf8');
+    const writeStream = fs.createWriteStream(__dirname + '/uploads/result.txt');
+
+    const rl = readline.createInterface({
+            input: readStream,
+            output: writeStream,
+            terminal: false
+    });
+    const dateArray = [];
+
+    rl.on('line', (line) => {
+        dateArray.push(line);
+    })
+    rl.on('close', () => {
+        dateArray.sort((a, b) => {
+            requestsCounter++;
+            return new Date(b) - new Date(a)
+        });
+        const sortedDateArray = dateArray.join('\n');
+
+        const data = {
+            requests: requestsCounter,
+            processingTime: performance.now() - startTime
         }
 
-        const numbers = fileContents
-            .trim()
-            .split("\n")
-            .map((line) => parseInt(line, 10))
-            .filter((number) => !isNaN(number));
+        processingData.push(data);
+        sortingRequests+=requestsCounter;
 
-        const sortedNumbers = numbers.sort((a, b) => a - b); // Sorting numbers in ascending order
-
-        const sortedFileContent = sortedNumbers.join('\n'); // Join numbers with newline
-
-        const filePath = __dirname + '/uploads/result.txt'; // File path to save sorted data
-
-        fs.writeFile(filePath, sortedFileContent, 'utf8', (err) => {
-            if (err) {
-                return res.status(500).json({error: 'Error writing file'});
+        writeStream.write(sortedDateArray, 'utf8', (err) => {
+            if(err){
+                return res.status(500).json({ error: 'Error writing file'});
             }
+            res.json({ message: 'File sorted and saved as result.txt'});
+        })
+    })
 
-            res.json({message: 'File sorted and saved as result.txt'});
-        });
-    });
 });
 
 app.get('/download', (req, res) => {
@@ -47,6 +60,10 @@ app.get('/download', (req, res) => {
             return res.status(500).json({ error: 'Error downloading file' });
         }
     });
+});
+
+app.get('/sortingInfo', (req, res) => {
+    res.json({ requests: sortingRequests, processingData: processingData });
 });
 
 app.listen(8000, () => {
