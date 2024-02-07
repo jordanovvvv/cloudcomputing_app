@@ -8,7 +8,6 @@ function App() {
   const [requests, setRequests] = useState(0);
   const [processingData, setProcessingData] = useState([]);
 
-
   axios.get('/sortingInfo')
       .then((response) => {
           const data = response.data;
