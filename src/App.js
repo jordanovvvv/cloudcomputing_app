@@ -7,43 +7,58 @@ function App() {
   const [processingTime, setProcessingTime] = useState(null);
   const [requests, setRequests] = useState(0);
   const [processingData, setProcessingData] = useState([]);
+  const [threshold, setThreshold] = useState('');
 
 
-  axios.get('/sortingInfo')
-      .then((response) => {
-          const data = response.data;
-          setRequests(data.requests);
-          setProcessingData(data.processingData);
-      })
-      .catch((err) => console.error('Error fetching sorting info:', err));
+
+    const handleSortingInfo = () => {
+        axios.get('https://node-backend-function.azurewebsites.net/api/HttpTrigger?action=sortingInfo')
+            .then((response) => {
+                const data = response.data;
+                setRequests(data.requests);
+                setProcessingData(data.processingData);
+            })
+            .catch((err) => console.error('Error fetching sorting info:', err));
+    }
 
   const handleFileUpload = (event) => {
     setInputFile(event.target.files[0]); //Set the input file
   }
+
+    const handleThreshold = (e) => {
+        setThreshold(e.target.value)
+    }
 
   const startCalculation = async (event) => {
     event.preventDefault();
     const startTime = performance.now(); //Set the start of the processing time
     const formData = new FormData();
     formData.append('inputFile', inputFile);
-    console.log(inputFile)
+    console.log(inputFile);
 
-    try{
-      await axios.post("/sort", formData, {  //Create POST method to API
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      }).then(() => {
-        setProcessingTime(performance.now() - startTime); //Finish processing time
-      });
-    }catch(err){
-      console.log(err);
-    };
+    for(let i = 1; i <= threshold; i++){
+        try{
+            await axios.post(`https://node-backend-function.azurewebsites.net/api/HttpTrigger?action=sort&numRequests=${i}`, formData, {  //Create POST method to API
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            }).then(() => {
+                setProcessingTime(performance.now() - startTime); //Finish processing time
+
+            });
+        }catch(err){
+            console.log(err);
+        };
+        handleSortingInfo();
+    }
+
+
+
   };
 
 
   const downloadResult = () => {
-      axios.get('/download', {
+      axios.get('https://node-backend-function.azurewebsites.net/api/HttpTrigger?action=download', {
           responseType: 'blob' // Set the responseType to 'blob'
       })
           .then((response) => {
@@ -76,10 +91,12 @@ function App() {
   }
 
 
+
   return (
       <div className="App">
         <input type="file" name="inputFile" onChange={handleFileUpload} />
         <button className="App-button" onClick={startCalculation}>Start Calculation</button>
+         <label>Threshold: </label> <input type="number" min={0} id="threshold" onChange={(e) => handleThreshold(e)}/>
         <button className="App-button" onClick={downloadResult}>Download latest Result</button>
           <p>Requests and Processing Times:</p>
           <ul>
