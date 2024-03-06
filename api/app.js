@@ -10,48 +10,107 @@ app.use(express.json());
 
 const processingData = [];
 let sortingRequests = 0;
+let requestsCounter = 0;
 
-app.post('/sort', upload.single('inputFile'), (req, res) => {
-    const inputFile = req.file; //Get input file
+app.post('/sort', upload.single('inputFile'), async (req, res) => {
+    const inputFile = req.file; // Get input file
     const startTime = performance.now();
-    let requestsCounter = 0;
 
-    const readStream = fs.createReadStream(inputFile.path, 'utf8');
-    const writeStream = fs.createWriteStream(__dirname + '/uploads/result.txt');
+    function mergeSort(arr)
+    {
+        if (arr.length < 2)
+            return arr;
 
-    const rl = readline.createInterface({
-            input: readStream,
-            output: writeStream,
-            terminal: false
-    });
-    const dateArray = [];
+        var middle = parseInt(arr.length / 2);
+        var left   = arr.slice(0, middle);
+        var right  = arr.slice(middle, arr.length);
 
-    rl.on('line', (line) => {
-        dateArray.push(line);
-    })
-    rl.on('close', () => {
-        dateArray.sort((a, b) => {
-            requestsCounter++;
-            return new Date(b) - new Date(a)
-        });
-        const sortedDateArray = dateArray.join('\n');
+        return merge(mergeSort(left), mergeSort(right));
+    }
 
-        const data = {
-            requests: requestsCounter,
-            processingTime: performance.now() - startTime
+    function merge(left, right)
+    {
+        var result = [];
+
+        while (left.length && right.length) {
+            if (left[0] <= right[0]) {
+                result.push(left.shift());
+            } else {
+                result.push(right.shift());
+            }
         }
 
-        processingData.push(data);
-        sortingRequests+=requestsCounter;
+        while (left.length)
+            result.push(left.shift());
 
-        writeStream.write(sortedDateArray, 'utf8', (err) => {
-            if(err){
-                return res.status(500).json({ error: 'Error writing file'});
-            }
-            res.json({ message: 'File sorted and saved as result.txt'});
-        })
-    })
+        while (right.length)
+            result.push(right.shift());
 
+        return result;
+    }
+
+    const processRequest = async () => {
+        const dateArray = [];
+
+        return new Promise((resolve, reject) => {
+            const rl = readline.createInterface({
+                input: fs.createReadStream(inputFile.path, 'utf8'),
+                terminal: false
+            });
+
+            rl.on('line', (line) => {
+                dateArray.push(line);
+            });
+
+            rl.on('close', () => {
+                // dateArray.sort((a, b) => new Date(b) - new Date(a));
+                mergeSort(dateArray);
+
+                sortingRequests += requestsCounter;
+
+                const sortedDateArray = dateArray.join('\n');
+
+                fs.writeFile(__dirname + '/uploads/result.txt', sortedDateArray, 'utf8', (err) => {
+                    if (err) {
+                        reject('Error writing file');
+                    }
+                    resolve();
+                });
+            });
+        });
+    };
+
+    const numRequests = req.query.numRequests || 1;
+    console.log(numRequests);
+
+    const shuffleArray = (array) => {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    };
+
+    const requestOrder = Array.from({ length: numRequests }, (_, index) => index + 1);
+    shuffleArray(requestOrder); // Randomize the order of requests
+
+    for (let i = 0; i < numRequests; i++) {
+        const currentRequest = requestOrder[i];
+        let j = currentRequest;
+        const startTime = performance.now(); // Start processing time for each request
+        while (j) {
+            await processRequest();
+            j--;
+        }
+
+
+        requestsCounter += currentRequest; // Increment requests counter for each request
+    }
+    const data = {
+        requests: numRequests,
+        processingTime: performance.now() - startTime
+    };
+    processingData.push(data); // Push data after each request is processed
+    res.json({ message: `File sorted and saved as result.txt for ${numRequests} requests` });
 });
 
 app.get('/download', (req, res) => {
